@@ -1,0 +1,130 @@
+---
+title: "Prediction Assignment"
+author: "AngeLinda"
+date: "June 27, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset). 
+
+
+## Data
+
+The training data for this project are available here: 
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>  
+The test data are available here:
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+## Objective of this Assignment
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Data Preparation
+
+In this part, the data are loaded, read, cleaned(the colomns with only **NA**s are removed, and the data irrelated to predictions, i.e., colomn 1 to 7, are also removed), and parted for training and validation, which are **training_data** and **validation_data**.
+
+```{r}
+## prepare library
+library(caret)
+library(rpart)
+library(rattle)
+library(randomForest)
+library(class)
+library(e1071)
+
+## Load & Read the data
+training_Url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testing_Url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(training_Url, na.strings = c("NA","#DIV/0!",""))
+testing <- read.csv(testing_Url, na.strings = c("NA","#DIV/0!",""))
+
+## Clean the data
+training_set <- training[, colSums(is.na(training)) == 0]
+training_set <- training_set[, -c(1:7)]
+testing_set <- testing[, colSums(is.na(testing)) == 0]
+testing_set <- testing_set[, -c(1:7)]
+
+## Partition the training set into training data and validation data
+inTrain <- createDataPartition(training_set$classe, p=0.75, list = F)
+training_data <- training_set[inTrain,]
+validation_data <- training_set[-inTrain,]
+```
+
+## Prediction Models
+
+In this session, 4 different prediction models are executed and compared. They are **Decision Tree**, **Random Forest**, **K Nearest Neighbor**, and **Support Vector Machines**. Different Figures are obtained for analysis.
+
+### Prediction Model 1: Decision Tree
+
+```{r}
+model_DT <- rpart(classe ~ ., method = "class",data = training_data)
+pred_DT <- predict(model_DT, newdata = validation_data, type="class")
+confusionMatrix(pred_DT, validation_data$classe)
+```
+```{r, g1}
+fancyRpartPlot(model_DT)
+```
+
+### Predicion Model 2: Random Forest
+
+```{r}
+model_RF <- randomForest(classe ~., data = training_data) 
+pred_RF <- predict(model_RF, validation_data)
+confusionMatrix(pred_RF, validation_data$classe)
+```
+```{r, g2}
+plot(model_RF)
+```
+
+With the increase of trees, the error of all five classes reaches below 0.02, which reflects high accuracy.
+
+### Prediction Model 3: K Nearest Neighbor
+
+```{r}
+cl <- training_data$classe
+acc <- NULL
+for(i in 1:20) {
+  model_KNN <- knn(training_data[, -53], validation_data[,-53], cl, k=i, prob=TRUE) 
+  acc <- c(acc,confusionMatrix(model_KNN, validation_data$classe)$overall[[1]])
+}
+```
+```{r, g3}
+plot(acc*100, xlab = "k value", ylab = "accuracy [%]",
+     main = "accuracy result with increase of K value")
+```
+
+### Prediction Model 4: Support Vector Machines
+
+```{r}
+model_SVM <- svm(classe ~., data = training_data)
+pred_SVM <- predict(model_SVM, validation_data)
+confusionMatrix(pred_SVM, validation_data$classe)
+```
+
+## Conclusion
+Based on the four prediction models analyzed above, a table which compares the accuracy and 95% CI of different models is illustrated as follows:
+
+```{r, echo=FALSE}
+tb <- matrix(c(confusionMatrix(pred_DT, validation_data$classe)$overall[[1]],
+               confusionMatrix(pred_RF, validation_data$classe)$overall[[1]],
+               max(acc),
+               confusionMatrix(pred_SVM, validation_data$classe)$overall[[1]]), ncol=1, byrow = T)
+colnames(tb) <- c("Accuracy")
+rownames(tb) <- c("Decision Tree", "Random Forest", 
+                  "K Nearest Neighbor (K=1)", "Support Vector Machines")
+as.table(tb)
+```
+
+We can find that the model which generates the highest accuracy is Random Forest with out-of-sample error less than 0.5%, followed by K-Nearest Neighbor (K=1), Support Vector Machines, and the model with least performance is Decision Tree. Therefore, we use the Random Forest model to make the predictions on the test data to predict the way 20 participates performed the exercise.
+
+```{r}
+predict(model_RF, testing_set)
+```
+
